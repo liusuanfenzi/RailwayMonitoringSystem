@@ -1,0 +1,19 @@
+# YOLO模型配置
+
+yolov8:
+  detection:
+    model: "yolov8n.pt"
+    confidence: 0.5
+    iou_threshold: 0.45
+    classes: [0, 1, 2, 3, 5]  # person, bicycle, car, motorcycle, bus
+    
+  pose:
+    model: "yolov8n-pose.pt"
+    confidence: 0.6
+    keypoints_confidence: 0.5
+
+training:
+  img_size: 640
+  batch_size: 16
+  epochs: 100
+  patience: 10

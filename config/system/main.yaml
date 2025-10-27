@@ -1,0 +1,28 @@
+# 系统主配置
+
+system:
+  name: "铁路智能监控系统"
+  version: "1.0.0"
+  debug: false
+  
+logging:
+  level: "INFO"
+  file: "outputs/logs/system.log"
+  max_size: "10MB"
+  backup_count: 5
+
+cameras:
+  - id: "camera_1"
+    enabled: true
+    type: "gesture_detection"
+  - id: "camera_2" 
+    enabled: true
+    type: "train_detection"
+
+modules:
+  train_detection:
+    enabled: true
+    confidence_threshold: 0.7
+  gesture_detection:
+    enabled: true  
+    gesture_sequence: ["left", "right", "forward"]

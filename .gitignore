@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+railway_vision_pc/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data files
+outputs/
+*.mp4
+*.avi
+*.jpg
+*.png
+data/training/
+data/validation/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Weights (large files)
+weights/*.pt
+weights/*.pth
+!weights/.gitkeep
