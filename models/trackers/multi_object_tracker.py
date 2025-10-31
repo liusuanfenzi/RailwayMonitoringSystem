@@ -25,6 +25,10 @@ class MultiObjectTracker:
         self.nn_budget = nn_budget
         self.use_gpu = use_gpu
         
+        # ROI相关
+        self.roi_points = None
+        self.roi_active = False
+        
         # 初始化DeepSORT跟踪器
         self.tracker = self._create_deepsort_tracker()
         
@@ -62,9 +66,23 @@ class MultiObjectTracker:
             print("❌ 无法导入DeepSORT，请安装: pip install deep-sort-realtime")
             raise ImportError("DeepSORT库未安装")
     
+    def set_roi(self, points):
+        """设置ROI区域"""
+        if len(points) == 2:
+            self.roi_points = points
+            self.roi_active = True
+            print(f"🎯 设置跟踪器ROI: {points}")
+        else:
+            print("⚠️ ROI点必须是两个点 [(x1,y1), (x2,y2)]")
+    
+    def disable_roi(self):
+        """禁用ROI跟踪"""
+        self.roi_active = False
+        print("🔓 禁用ROI跟踪，使用全图跟踪")
+    
     def update(self, detections, frame=None):
         """
-        更新跟踪器
+        更新跟踪器（可选ROI区域）
         
         Args:
             detections: 检测结果数组 [[x1, y1, x2, y2, confidence, class_id], ...]
@@ -77,9 +95,17 @@ class MultiObjectTracker:
             print("⚠️ DeepSORT需要帧图像进行特征提取，使用空结果")
             return []
         
+        # 如果启用了ROI且检测结果为空，检查ROI区域内是否有需要跟踪的目标
+        if self.roi_active and len(detections) == 0:
+            tracks = self.tracker.update_tracks([], frame=frame)
+            # 过滤ROI区域外的跟踪结果
+            return self._filter_tracks_by_roi(tracks)
+        
         if len(detections) == 0:
             # 没有检测结果时更新跟踪器
             tracks = self.tracker.update_tracks([], frame=frame)
+            if self.roi_active:
+                return self._filter_tracks_by_roi(tracks)
             return self._parse_tracks(tracks)
         
         # 转换检测结果为DeepSORT格式
@@ -104,12 +130,49 @@ class MultiObjectTracker:
         
         # 更新跟踪器
         try:
-            #tracks是跟踪结果列表
             tracks = self.tracker.update_tracks(deepsort_detections, frame=frame)
-            return self._parse_tracks(tracks)
+            
+            # 如果启用了ROI，过滤ROI区域外的跟踪结果
+            if self.roi_active:
+                return self._filter_tracks_by_roi(tracks)
+            else:
+                return self._parse_tracks(tracks)
+                
         except Exception as e:
             print(f"❌ DeepSORT更新失败: {e}")
             return []
+    
+    def _filter_tracks_by_roi(self, tracks):
+        """过滤ROI区域外的跟踪结果"""
+        filtered_tracks = []
+        
+        for track in tracks:
+            if not track.is_confirmed():
+                continue
+                
+            bbox = track.to_tlbr()  # 获取[x1, y1, x2, y2]格式的边界框
+            if len(bbox) >= 4:
+                try:
+                    x1, y1, x2, y2 = map(float, bbox)
+                    center_x, center_y = (x1 + x2) / 2, (y1 + y2) / 2
+                    
+                    # 检查中心点是否在ROI内
+                    if self._point_in_roi(center_x, center_y):
+                        filtered_tracks.append(track)
+                except (ValueError, TypeError):
+                    continue
+        
+        return self._parse_tracks(filtered_tracks)
+    
+    def _point_in_roi(self, x, y):
+        """检查点是否在ROI内"""
+        if not self.roi_active or self.roi_points is None:
+            return True
+            
+        x1, y1 = self.roi_points[0]
+        x2, y2 = self.roi_points[1]
+        
+        return x1 <= x <= x2 and y1 <= y <= y2
     
     def _parse_tracks(self, tracks):
         """解析DeepSORT跟踪结果"""
@@ -139,20 +202,88 @@ class MultiObjectTracker:
     
         return tracked_objects if tracked_objects else []
         
-    def visualize_tracking(self, frame, tracked_objects, staying_objects=None):
+    # def visualize_tracking(self, frame, tracked_objects, staying_objects=None):
+    #     """
+    #     可视化跟踪结果
+        
+    #     Args:
+    #         frame: 输入图像
+    #         tracked_objects: 跟踪结果
+    #         staying_objects: 停留对象集合
+            
+    #     Returns:
+    #         visualized_frame: 可视化后的图像
+    #     """
+    #     display_frame = frame.copy()
+    #     staying_objects = staying_objects or set()
+        
+    #     # 绘制ROI区域（如果启用）
+    #     if self.roi_active and self.roi_points:
+    #         cv2.rectangle(display_frame, 
+    #                      self.roi_points[0], self.roi_points[1],
+    #                      (0, 255, 0), 2)
+    #         cv2.putText(display_frame, "Detection ROI", 
+    #                    (self.roi_points[0][0], self.roi_points[0][1] - 10),
+    #                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        
+    #     for obj in tracked_objects:
+    #         if len(obj) >= 5:
+    #             try:
+    #                 # 确保所有值都是数字类型
+    #                 x1, y1, x2, y2, track_id = obj[:5]
+    #                 x1 = float(x1)
+    #                 y1 = float(y1)
+    #                 x2 = float(x2)
+    #                 y2 = float(y2)
+    #                 track_id = int(float(track_id))  # 确保track_id是整数
+                    
+    #                 # 转换为整数用于绘制
+    #                 x1_int, y1_int, x2_int, y2_int = int(x1), int(y1), int(x2), int(y2)
+                    
+    #                 # 设置颜色和标签
+    #                 color = (0, 255, 0)  # 绿色-正常
+    #                 label = f"ID:{track_id}"
+                    
+    #                 if track_id in staying_objects:
+    #                     color = (0, 0, 255)  # 红色-停留
+    #                     label = f"ID:{track_id} (STAY)"
+                    
+    #                 # 绘制边界框和标签
+    #                 cv2.rectangle(display_frame, (x1_int, y1_int), (x2_int, y2_int), color, 2)
+    #                 cv2.putText(display_frame, label, (x1_int, y1_int-10),
+    #                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                    
+    #             except (ValueError, TypeError) as e:
+    #                 print(f"⚠️ 可视化错误: {e}，跳过该对象")
+    #                 continue
+        
+    #     return display_frame
+
+    def visualize_tracking(self, frame, tracked_objects, staying_objects=None, alerted_objects=None):
         """
         可视化跟踪结果
         
         Args:
             frame: 输入图像
             tracked_objects: 跟踪结果
-            staying_objects: 停留对象集合
+            staying_objects: 当前停留对象集合
+            alerted_objects: 曾经报警过的对象集合
             
         Returns:
             visualized_frame: 可视化后的图像
         """
         display_frame = frame.copy()
         staying_objects = staying_objects or set()
+        alerted_objects = alerted_objects or set()
+        
+        # 绘制ROI区域（如果启用）
+        if self.roi_active and self.roi_points:
+            cv2.rectangle(display_frame, 
+                        self.roi_points[0], self.roi_points[1],
+                        (0, 255, 0), 2)
+            cv2.putText(display_frame, "Detection ROI", 
+                    (self.roi_points[0][0], self.roi_points[0][1] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
         
         for obj in tracked_objects:
             if len(obj) >= 5:
@@ -169,12 +300,17 @@ class MultiObjectTracker:
                     x1_int, y1_int, x2_int, y2_int = int(x1), int(y1), int(x2), int(y2)
                     
                     # 设置颜色和标签
-                    color = (0, 255, 0)  # 绿色-正常
-                    label = f"ID:{track_id}"
-                    
                     if track_id in staying_objects:
-                        color = (0, 0, 255)  # 红色-停留
-                        label = f"ID:{track_id} (STAY)"
+                        color = (0, 0, 255)  # 红色 - 当前停留
+                        status = "STAYING"
+                    elif track_id in alerted_objects:
+                        color = (0, 0, 255)  # 蓝色 - 曾经停留过
+                        status = "ALERTED"
+                    else:
+                        color = (0, 255, 0)  # 绿色 - 正常
+                        status = "TRACKING"
+                    
+                    label = f"ID:{track_id} - {status}"
                     
                     # 绘制边界框和标签
                     cv2.rectangle(display_frame, (x1_int, y1_int), (x2_int, y2_int), color, 2)
@@ -186,52 +322,3 @@ class MultiObjectTracker:
                     continue
         
         return display_frame
-    
-    def filter_detections_by_roi(self, detections, roi_manager):
-        """
-        过滤ROI区域外的检测结果
-        
-        Args:
-            detections: 原始检测结果
-            roi_manager: ROI管理器实例
-            
-        Returns:
-            filtered_detections: ROI区域内的检测结果
-        """
-        if roi_manager is None or len(detections) == 0:
-            return detections
-            
-        filtered_detections = []
-        
-        for det in detections:
-            if len(det) >= 4:
-                try:
-                    # 确保坐标是数字类型
-                    x1, y1, x2, y2 = det[:4]
-                    x1 = float(x1)
-                    y1 = float(y1)
-                    x2 = float(x2)
-                    y2 = float(y2)
-                    
-                    center_x, center_y = (x1 + x2) / 2, (y1 + y2) / 2
-                    
-                    # 检查是否在任意ROI内
-                    in_roi = False
-                    for roi_name in roi_manager.get_roi_names():
-                        if roi_manager.point_in_roi(int(center_x), int(center_y), roi_name):
-                            in_roi = True
-                            break
-                    
-                    if in_roi:
-                        # 保持原始检测格式，但确保是数字类型
-                        if len(det) == 4:
-                            filtered_detections.append([x1, y1, x2, y2])
-                        elif len(det) >= 6:
-                            # 保留置信度和类别ID
-                            filtered_detections.append([x1, y1, x2, y2, float(det[4]), int(det[5])])
-                            
-                except (ValueError, TypeError) as e:
-                    print(f"⚠️ ROI过滤错误: {e}，跳过该检测")
-                    continue
-        
-        return filtered_detections
