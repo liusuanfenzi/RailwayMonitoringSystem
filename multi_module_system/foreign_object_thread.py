@@ -23,31 +23,35 @@ class ForeignObjectThread(BaseThread):
         self.background_frames = config.get('foreign_object_background_frames', 15)
         self.difference_threshold = config.get('foreign_object_difference_threshold', 50)
         
-        # 检测器实例
+        # 检测器实例（延迟初始化）
         self.motion_detector = None
-        self.detector = ForeignObjectDetector(
-            roi_coords=self.roi_coords,
-            min_static_duration=self.min_static_duration,
-            threshold=self.threshold,
-            min_area=self.min_area,
-            alert_dir=self.alert_dir
-        )
+        self.detector = None
         
         self.initialized = False
         self.last_frame = None  # 添加这个属性
         print(f"✅ {self.name} 初始化完成 - ROI: {self.roi_coords}")
 
     def _run_impl(self):
-        """重写线程主循环实现"""
-        # 第一步：初始化背景模型
-        if not self.initialize_background_model():
-            print(f"❌ {self.name} 背景模型初始化失败")
-            return
+        """初始化检测器，然后调用父类的主循环"""
+        print(f"🚀 {self.name} 正在初始化...")
         
-        print(f"✅ {self.name} 背景模型初始化完成，开始正常检测循环")
-        
-        # 第二步：调用父类的主循环
-        super()._run_impl()
+        try:
+            # 第一步：初始化背景模型
+            if not self.initialize_background_model():
+                print(f"❌ {self.name} 背景模型初始化失败")
+                self.video_ended = True  # 标记视频结束，防止继续尝试
+                return
+            
+            print(f"✅ {self.name} 背景模型初始化完成，开始正常检测循环")
+            
+            # 第二步：调用父类的主循环
+            super()._run_impl()
+            
+        except Exception as e:
+            print(f"❌ {self.name} 初始化失败: {e}")
+            import traceback
+            traceback.print_exc()
+            self.video_ended = True  # 标记视频结束，防止继续尝试
 
     def initialize_background_model(self):
         """初始化背景模型"""
@@ -64,6 +68,15 @@ class ForeignObjectThread(BaseThread):
         # 从缓冲区构建背景模型
         if not self.motion_detector.build_background_from_buffer(self.frame_buffer, self.stop_event):
             return False
+        
+        # 创建异物检测器
+        self.detector = ForeignObjectDetector(
+            roi_coords=self.roi_coords,
+            min_static_duration=self.min_static_duration,
+            threshold=self.threshold,
+            min_area=self.min_area,
+            alert_dir=self.alert_dir
+        )
         
         # 初始化异物检测器
         if not self.detector.initialize(self.motion_detector):
@@ -119,7 +132,7 @@ class ForeignObjectThread(BaseThread):
 
     def get_specific_stats(self):
         """获取特定模块的统计信息"""
-        if hasattr(self.detector, 'frame_count'):
+        if self.detector and hasattr(self.detector, 'frame_count'):
             return {
                 'detected_frames': self.detector.frame_count,
                 'static_regions': len([r for r in self.detector.static_candidates.values() 
@@ -131,7 +144,7 @@ class ForeignObjectThread(BaseThread):
 
     def cleanup(self):
         """清理资源"""
-        if hasattr(self.detector, 'cleanup'):
+        if self.detector and hasattr(self.detector, 'cleanup'):
             self.detector.cleanup()
         
         print(f"🧹 {self.name} 资源已清理")

@@ -491,6 +491,14 @@ class MultiModuleSystemController:
         print("\n🛑 停止多模块检测系统...")
         self.stop_event.set()
         
+        # 记录线程状态
+        alive_threads = []
+        for thread in self.threads:
+            if thread and thread.is_alive():
+                alive_threads.append(thread)
+        
+        print(f"🔄 正在停止 {len(alive_threads)} 个活跃线程...")
+        
         # 等待所有线程结束
         for thread in self.threads:
             if thread and thread.is_alive():
@@ -509,8 +517,19 @@ class MultiModuleSystemController:
                     else:
                         display_name = thread_name
                 
-                thread.join(timeout=2.0)
-                print(f"✅ 停止线程: {display_name}")
+                try:
+                    thread.join(timeout=2.0)
+                    print(f"✅ 停止线程: {display_name}")
+                except Exception as e:
+                    print(f"⚠️ 停止线程 {display_name} 时出错: {e}")
+        
+        # 清理显示管理器
+        if self.display_manager:
+            try:
+                self.display_manager.cleanup()
+                print("✅ 显示管理器已清理")
+            except Exception as e:
+                print(f"⚠️ 清理显示管理器时出错: {e}")
         
         print("✅ 系统已完全停止")
     
@@ -542,14 +561,16 @@ class MultiModuleSystemController:
                         self.update_performance_stats()
                         last_perf_time = current_time
                     
-                    # 每30秒检查一次线程状态
-                    if current_time % 30 < 0.1:
-                        self.check_thread_status()
+                    # 每5秒检查一次线程状态和视频源状态
+                    # if int(current_time) % 5 == 0:
+                    #     self.check_thread_status()
+                    #     self.check_video_source_status()
                     
                     time.sleep(0.1)
                     
                 except KeyboardInterrupt:
                     print("\n⏹️ 用户中断")
+                    self.stop_event.set()  # 设置停止事件
                     break
                 except Exception as e:
                     print(f"⚠️ 主循环异常: {e}")
@@ -561,6 +582,24 @@ class MultiModuleSystemController:
             traceback.print_exc()
         finally:
             self.stop_system()
+            
+    def check_video_source_status(self):
+        """检查视频源状态"""
+        try:
+            for thread in self.threads:
+                if isinstance(thread, VideoCaptureThread):
+                    if not thread.is_alive():
+                        print(f"⚠️ 视频捕获线程 {thread.name} 已停止")
+                        
+                        # 找到对应的检测线程
+                        for detection_thread in self.threads:
+                            if hasattr(detection_thread, 'frame_buffer') and detection_thread.frame_buffer == thread.frame_buffer:
+                                print(f"  相关检测线程: {detection_thread.name}")
+                                if detection_thread.is_alive():
+                                    print(f"  检测线程仍在运行，等待其自然结束或用户停止")
+                                break
+        except Exception as e:
+            print(f"⚠️ 检查视频源状态异常: {e}")
     
     def update_performance_stats(self):
         """更新性能统计"""
@@ -609,28 +648,42 @@ class MultiModuleSystemController:
     
     def check_thread_status(self):
         """检查线程状态"""
-        alive_count = sum(1 for thread in self.threads if thread and thread.is_alive())
-        total_count = len(self.threads)
-        
-        if alive_count < total_count:
-            print(f"\n⚠️ 线程状态: {alive_count}/{total_count} 个线程运行中")
+        try:
+            alive_count = sum(1 for thread in self.threads if thread and thread.is_alive())
+            total_count = len(self.threads)
             
-            for i, thread in enumerate(self.threads):
-                if thread:
-                    status = "运行" if thread.is_alive() else "停止"
-                    
-                    # 获取友好的线程名称
-                    thread_name = thread.__class__.__name__
-                    for module_key, module_info in self.module_mapping.items():
-                        if module_info['name'] in thread_name or isinstance(thread, module_info['class']):
-                            display_name = module_info['display_name']
-                            break
-                    else:
-                        if 'VideoCapture' in thread_name:
-                            display_name = '视频捕获'
-                        elif 'Display' in thread_name:
-                            display_name = '显示'
+            if alive_count < total_count:
+                print(f"\n⚠️ 线程状态: {alive_count}/{total_count} 个线程运行中")
+                
+                for i, thread in enumerate(self.threads):
+                    if thread:
+                        status = "运行" if thread.is_alive() else "停止"
+                        
+                        # 获取友好的线程名称
+                        thread_name = thread.__class__.__name__
+                        for module_key, module_info in self.module_mapping.items():
+                            if module_info['name'] in thread_name or isinstance(thread, module_info['class']):
+                                display_name = module_info['display_name']
+                                break
                         else:
-                            display_name = thread_name
-                    
-                    print(f"  - {display_name}: [{status}]")
+                            if 'VideoCapture' in thread_name:
+                                display_name = '视频捕获'
+                            elif 'Display' in thread_name:
+                                display_name = '显示'
+                            else:
+                                display_name = thread_name
+                        
+                        # 如果是视频捕获线程，检查是否已结束
+                        if isinstance(thread, VideoCaptureThread):
+                            if hasattr(thread, 'is_video_ended') and thread.is_video_ended():
+                                display_name = f"{display_name} (视频已结束)"
+                        
+                        print(f"  - {display_name}: [{status}]")
+            
+            # 如果所有线程都停止了，设置停止事件
+            if alive_count == 0:
+                print("🛑 所有线程已停止，系统退出")
+                self.stop_event.set()
+                
+        except Exception as e:
+            print(f"⚠️ 检查线程状态异常: {e}")

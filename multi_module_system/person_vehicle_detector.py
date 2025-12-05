@@ -14,23 +14,16 @@ class PersonVehicleDetectionThread(BaseThread):
         self.last_frame = None  # 添加这个属性
         
     def _run_impl(self):
-        """初始化检测器后运行主循环"""
+        """初始化检测器，然后调用父类的主循环"""
         print("🚗 初始化人车检测器")
         
         # 添加CUDA上下文调试信息
         import pycuda.driver as cuda
-        # try:
-        #     # 检查当前线程的CUDA上下文状态
-        #     ctx = cuda.Context.get_current()
-        #     print(f"🔍 检测线程启动时CUDA上下文: {ctx}")
-        # except:
-        #     print("⚠️ 检测线程启动时无CUDA上下文（将由autoinit自动创建）")
         
         try:
             # 使用统一的配置键名
             engine_path = self.config.get('person_vehicle_engine_path', 'yolov8n.engine')
             confidence = self.config.get('person_vehicle_confidence', 0.6)
-            target_fps = self.config.get('person_vehicle_target_fps', 20)
             
             from models.detector.yolo_detector import YOLODetector
             from models.tracker.multi_object_tracker import MultiObjectTracker
@@ -70,70 +63,19 @@ class PersonVehicleDetectionThread(BaseThread):
             
             print("✅ 人车检测器初始化成功")
             
-            # 添加帧计数器
-            frames_processed = 0
+            # 现在调用父类的_run_impl方法，它会处理主循环
+            super()._run_impl()
             
-            # 调用父类的主循环，但添加更多调试信息
-            while not self.stop_event.is_set():
-                try:
-                    # 获取帧数据
-                    frame_data = self.get_frame_data()
-                    if frame_data is None:
-                        print(f"⚠️ {self.name}: 帧缓冲区为空，等待...")
-                        time.sleep(0.1)
-                        continue
-                    
-                    frame, frame_count, timestamp = frame_data
-                    frames_processed += 1
-                    
-                    # 每5帧打印一次
-                    # if frames_processed % 15 == 0:
-                    #     print(f"🎯 {self.name} 正在处理第 {frames_processed} 帧，形状: {frame.shape}")
-                    
-                    # 处理帧
-                    start_time = time.time()
-                    result = self.process_frame(frame, frame_count, timestamp)
-                    processing_time = time.time() - start_time
-                    
-                    # 更新性能统计
-                    self.update_performance_stats(processing_time)
-                    
-                    # 保存结果
-                    if result is not None:
-                        # 确保结果包含原始帧
-                        if isinstance(result, dict) and 'frame' not in result:
-                            result['frame'] = frame.copy() if frame is not None else np.zeros((480, 640, 3), dtype=np.uint8)
-                        
-                        # 保存结果
-                        saved = self.save_result(result)
-                        if not saved:
-                            print(f"⚠️ {self.name} 保存结果失败")
-                    else:
-                        # 即使没有结果也保存一个空结果
-                        empty_result = {
-                            'frame': frame.copy() if frame is not None else np.zeros((480, 640, 3), dtype=np.uint8),
-                            'timestamp': timestamp,
-                            'frame_count': frame_count,
-                            'thread_name': self.name,
-                            'status': 'no_result'
-                        }
-                        self.save_result(empty_result)
-                    
-                    # 控制处理频率
-                    self.control_processing_rate()
-                    
-                except Exception as e:
-                    print(f"⚠️ {self.name} 处理帧时异常: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    time.sleep(0.1)
-                    
         except ImportError as e:
             print(f"❌ 导入模块失败: {e}")
+            import traceback
+            traceback.print_exc()
         except Exception as e:
             print(f"❌ 人车检测器初始化失败: {e}")
             import traceback
             traceback.print_exc()
+            # 初始化失败，标记视频结束，防止继续尝试
+            self.video_ended = True
     
     def process_frame(self, frame, frame_count, timestamp):
         """处理单帧进行人车检测"""
@@ -210,3 +152,4 @@ class PersonVehicleDetectionThread(BaseThread):
         """清理资源"""
         if self.detector:
             self.detector.cleanup()
+        print(f"🧹 {self.name} 已清理资源")

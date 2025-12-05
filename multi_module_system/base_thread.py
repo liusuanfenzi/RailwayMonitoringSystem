@@ -1,3 +1,4 @@
+# base_thread.py
 import threading
 import time
 import logging
@@ -26,6 +27,9 @@ class BaseThread(threading.Thread, ABC):
         # 设置模块名称
         self.module_name = name.lower().replace('thread', '').replace('_', ' ')
         
+        # 视频结束标志
+        self.video_ended = False
+    
     def run(self):
         """线程主循环 - 提供统一的错误处理"""
         print(f"🚀 启动 {self.name}")
@@ -44,15 +48,27 @@ class BaseThread(threading.Thread, ABC):
         """线程主循环实现 - 子类可重写"""
         print(f"🔁 {self.name} 进入主循环")
         
-        while not self.stop_event.is_set():
+        while not self.stop_event.is_set() and not self.video_ended:
             try:
                 # 获取帧数据
                 frame_data = self.get_frame_data()
                 if frame_data is None:
+                    # 检查是否是因为帧缓冲区收到结束信号
+                    if self.frame_buffer and hasattr(self.frame_buffer, 'has_end_signal') and self.frame_buffer.has_end_signal():
+                        print(f"🎬 {self.name}: 帧缓冲区已收到结束信号，线程正常退出")
+                        self.video_ended = True
+                        break
+                    # 否则，只是缓冲区暂时为空，继续等待
                     time.sleep(0.01)
                     continue
                 
                 frame, frame_count, timestamp = frame_data
+                
+                # 检查是否收到视频结束信号（frame 为 None）
+                if frame is None:
+                    print(f"🎬 {self.name}: 收到视频结束信号，线程正常退出")
+                    self.video_ended = True
+                    break
                 
                 # 处理帧
                 start_time = time.time()
@@ -88,13 +104,39 @@ class BaseThread(threading.Thread, ABC):
                 
             except Exception as e:
                 print(f"⚠️ {self.name} 处理帧时异常: {e}")
+                import traceback
+                traceback.print_exc()
                 time.sleep(0.1)
     
     def get_frame_data(self):
-        """获取帧数据 - 基础实现"""
+        """获取帧数据 - 支持结束信号"""
         if self.frame_buffer:
-            frame_data = self.frame_buffer.get_frame_data()
+            # 使用新的get_frame_data方法，支持超时
+            if hasattr(self.frame_buffer, 'get_frame_data'):
+                frame_data = self.frame_buffer.get_frame_data(timeout=0.1)
+            else:
+                # 向后兼容
+                frame_data = self.frame_buffer.get_frame_data()
+                
             if frame_data:
+                # 检查是否为结束信号
+                if frame_data.get('is_end_signal', False):
+                    return None, frame_data.get('frame_id', 0), frame_data.get('timestamp', time.time())
+                
+                return (
+                    frame_data.get('frame'), 
+                    frame_data.get('frame_id', 0),
+                    frame_data.get('timestamp', time.time())
+                )
+        return None
+    
+    def get_frame_data_blocking(self, timeout=None):
+        """阻塞方式获取帧数据"""
+        if self.frame_buffer and hasattr(self.frame_buffer, 'get_frame_data'):
+            frame_data = self.frame_buffer.get_frame_data(timeout=timeout)
+            if frame_data:
+                if frame_data.get('is_end_signal', False):
+                    return None, frame_data.get('frame_id', 0), frame_data.get('timestamp', time.time())
                 return (
                     frame_data.get('frame'), 
                     frame_data.get('frame_id', 0),
@@ -131,11 +173,13 @@ class BaseThread(threading.Thread, ABC):
             }
             self.result_manager.update_performance(module_key, stats)
             
-            # 调试信息
+            # 调试信息（可选）
             # if 'frame' in result and result['frame'] is not None:
-            #     print(f"✅ {self.name} 保存结果到键: {module_key}, 帧形状: {result['frame'].shape}")
+            #     if self.frame_count % 30 == 0:  # 每30帧输出一次
+            #         print(f"✅ {self.name} 保存结果到键: {module_key}, 帧形状: {result['frame'].shape}")
             # else:
-            #     print(f"⚠️ {self.name} 保存结果到键: {module_key}, 无帧")
+            #     if self.frame_count % 30 == 0:
+            #         print(f"⚠️ {self.name} 保存结果到键: {module_key}, 无帧")
             
             return True
         return False
@@ -177,7 +221,9 @@ class BaseThread(threading.Thread, ABC):
     
     def control_processing_rate(self):
         """控制处理速率"""
-        target_fps = self.config.get('target_fps', 30)
+        target_fps_key = f"{self.get_module_key()}_target_fps"
+        target_fps = self.config.get(target_fps_key, self.config.get('target_fps', 30))
+        
         if target_fps > 0:
             avg_time = np.mean(self.processing_times) if self.processing_times else 0
             sleep_time = max(0, (1.0 / target_fps) - avg_time)
@@ -192,7 +238,8 @@ class BaseThread(threading.Thread, ABC):
             'module': self.module_name,
             'fps': self.fps,
             'avg_processing_time': avg_time,
-            'frame_count': self.frame_count
+            'frame_count': self.frame_count,
+            'video_ended': self.video_ended  # 添加视频结束状态
         }
         
         # 添加特定模块的统计信息
@@ -205,6 +252,10 @@ class BaseThread(threading.Thread, ABC):
     def get_specific_stats(self):
         """获取特定模块的统计信息 - 子类可重写"""
         return {}
+    
+    def is_video_ended(self):
+        """检查视频是否已结束"""
+        return self.video_ended
     
     def cleanup(self):
         """清理资源 - 子类可重写"""

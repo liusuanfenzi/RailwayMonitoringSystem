@@ -6,7 +6,7 @@ from .base_thread import BaseThread
 class TrainStationDetectionThread(BaseThread):
     """列车检测线程 - 基于BaseThread"""
     
-    def __init__(self, name,frame_buffer, result_manager, stop_event, config):
+    def __init__(self, name, frame_buffer, result_manager, stop_event, config):
         super().__init__(name, frame_buffer, result_manager, stop_event, config)
         self.detector = None
         self.bg_subtractor = None
@@ -14,13 +14,14 @@ class TrainStationDetectionThread(BaseThread):
         # 背景模型预热
         self.warmup_complete = False
         self.warmup_frames = 0
-        self.target_warmup_frames = self.config.get('warmup_frames', 15)
+        self.target_warmup_frames = self.config.get('train_station_warmup_frames', 15)
         
     def _run_impl(self):
-        """初始化检测器后运行主循环"""
+        """初始化检测器，然后调用父类的主循环"""
         print("🚆 初始化列车检测器")
         
         try:
+            # 初始化检测器
             self.initialize_detector()
             print("✅ 列车检测器初始化成功")
             
@@ -31,6 +32,7 @@ class TrainStationDetectionThread(BaseThread):
             print(f"❌ 列车检测器初始化失败: {e}")
             import traceback
             traceback.print_exc()
+            self.video_ended = True  # 标记视频结束，防止继续尝试
     
     def initialize_detector(self):
         """初始化列车检测器"""
@@ -68,8 +70,27 @@ class TrainStationDetectionThread(BaseThread):
     
     def process_frame(self, frame, frame_count, timestamp):
         """处理单帧进行列车检测"""
-        if self.bg_subtractor is None or self.detector is None:
-            return None
+        if self.bg_subtractor is None or self.detector is None or frame is None:
+            return {
+                'frame': frame.copy() if frame is not None else np.zeros((480, 640, 3), dtype=np.uint8),
+                'train_detections': {
+                    'confidence': 0.0,
+                    'spatial_detected': False,
+                    'current_state': 'unknown',
+                    'event_triggered': False,
+                    'error': 'detector_not_ready'
+                },
+                'station_status': {
+                    'state': 'unknown',
+                    'confidence': 0.0,
+                    'event_triggered': False,
+                    'trains_detected': 0,
+                    'warmup_complete': self.warmup_complete
+                },
+                'timestamp': timestamp,
+                'frame_count': frame_count,
+                'thread_name': self.name
+            }
         
         # 背景模型预热
         if not self.warmup_complete:
@@ -79,7 +100,7 @@ class TrainStationDetectionThread(BaseThread):
                 self.warmup_complete = True
                 print("✅ 背景模型预热完成")
         else:
-            learning_rate = self.config.get('bg_learning_rate', 0.01)
+            learning_rate = self.config.get('train_station_bg_learning_rate', 0.01)
         
         try:
             # 应用背景减除
@@ -101,18 +122,21 @@ class TrainStationDetectionThread(BaseThread):
             # 获取车站状态
             station_status = self.get_station_status(events)
             
-            return {
-                'frame': frame,
+            result = {
+                'frame': frame.copy(),
                 'train_detections': events,
                 'station_status': station_status,
                 'timestamp': timestamp,
-                'frame_count': frame_count
+                'frame_count': frame_count,
+                'thread_name': self.name
             }
+            
+            return result
             
         except Exception as e:
             print(f"⚠️ 列车检测处理异常: {e}")
             return {
-                'frame': frame,
+                'frame': frame.copy(),
                 'train_detections': {
                     'confidence': 0.0,
                     'spatial_detected': False,
@@ -127,7 +151,9 @@ class TrainStationDetectionThread(BaseThread):
                     'trains_detected': 0,
                     'warmup_complete': self.warmup_complete
                 },
-                'timestamp': timestamp
+                'timestamp': timestamp,
+                'frame_count': frame_count,
+                'thread_name': self.name
             }
     
     def _format_bg_results(self, bg_result, frame):
@@ -200,3 +226,5 @@ class TrainStationDetectionThread(BaseThread):
                 self.bg_subtractor.release()
             except:
                 pass
+        
+        print(f"🧹 {self.name} 已清理资源")
