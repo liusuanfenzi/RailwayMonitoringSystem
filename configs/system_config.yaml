@@ -1,0 +1,29 @@
+# 性能优化配置
+enable_debug: false  # 全局调试开关
+enable_video_debug: false  # 视频调试
+enable_pv_debug: false  # 人车检测调试
+enable_fo_debug: false  # 异物检测调试
+
+# 视频源配置
+video_sources: 
+  - "data/test_videos/safe_gesture/gf1_new.mp4"
+  - "data/test_videos/trash_in_area/1.mp4"
+
+# 帧率配置
+target_fps: 15  # 系统目标FPS
+person_vehicle_target_fps: 15  # 人车检测目标FPS
+foreign_object_target_fps: 8   # 异物检测目标FPS
+
+# 缓冲区配置
+buffer_size: 5  # 减少缓冲区大小
+
+# 人车检测配置
+person_vehicle_engine_path: "yolov8n.engine"
+person_vehicle_confidence: 0.6
+person_vehicle_max_age: 30  # 减少跟踪器最大寿命
+
+# 异物检测配置
+foreign_object_roi: [[550, 400, 400, 300]]
+foreign_object_min_static_duration: 2.0
+foreign_object_threshold: 200
+foreign_object_min_area: 100

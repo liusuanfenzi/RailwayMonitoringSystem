@@ -1,0 +1,22 @@
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    enP8p1s0:
+      dhcp4: no
+      addresses: [192.168.1.100/24]
+      # 【重要】移除原先的 default 路由配置
+      routes:
+        - to: 192.168.1.0/24  # 只针对摄像头网段
+          via: 192.168.1.1
+          metric: 100         # 可选，为这条路由设置一个较高的“开销”值
+      # 【可选】移除nameservers，使用WiFi网络下发的DNS
+      # nameservers:
+      #   addresses: [114.114.114.114, 8.8.8.8]
+  wifis:
+    wlP1p1s0:
+      dhcp4: yes
+      access-points:
+        "wjysrd":
+          password: "wjy666666"
+      # 【重要】不再设置 optional: true，我们希望WiFi是主要连接

@@ -1,0 +1,26 @@
+# 核心计算机视觉
+opencv-python==4.6.0.66
+numpy>=1.22.2  # 满足 ultralytics 的要求
+
+# 目标检测和跟踪
+ultralytics==8.0.186
+deep-sort-realtime==1.3.2
+
+# 数据处理和分析
+scipy==1.10.1  # 更新到兼容版本
+scikit-learn==1.3.0
+scikit-image==0.21.0
+pandas==2.0.3
+
+# 工具类
+pathlib2==2.3.7
+tqdm==4.65.0
+psutil==5.9.5
+
+# 可选：如果需要可视化
+matplotlib==3.7.1
+seaborn==0.12.2
+
+# 其他工具
+requests==2.31.0
+python-json-logger==2.0.7
