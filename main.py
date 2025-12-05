@@ -12,8 +12,6 @@ import signal
 # 添加当前目录到Python路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# 注意：我们移除了对cuda_context_manager的导入
-# from multi_module_system.cuda_context_manager import cuda_context_aware, context_manager
 from multi_module_system.system_controller import MultiModuleSystemController
 
 def signal_handler(sig, frame):
@@ -22,53 +20,64 @@ def signal_handler(sig, frame):
     # 注意：对于autoinit方式，不需要手动清理CUDA上下文
     sys.exit(0)
 
-# 移除cuda_context_aware装饰器
 def run_system_controller(args):
     """运行系统控制器的核心函数"""
     # 创建系统控制器
     controller = MultiModuleSystemController(config_path=args.config)
 
-    # 覆盖配置中的视频源
-    if args.video:
-        controller.config['video_source'] = args.video
-
-    # 如果提供了两个视频源，使用 video_sources 配置
-    if args.video1 and args.video2:
-        controller.config['video_sources'] = [args.video1, args.video2]
+    # 命令行参数覆盖配置
+    if args.rtsp1:
+        # 设置RTSP源
+        controller.config['rtsp_sources'] = [args.rtsp1]
+        if args.rtsp2:
+            controller.config['rtsp_sources'].append(args.rtsp2)
+        elif args.video2:
+            controller.config['rtsp_sources'].append(args.video2)
     elif args.video1:
-        controller.config['video_sources'] = [args.video1, controller.config.get('video_source')]
-    elif args.video2:
-        controller.config['video_sources'] = [controller.config.get('video_source'), args.video2]
-    
+        # 使用文件/摄像头源
+        if args.video2:
+            controller.config['video_sources'] = [args.video1, args.video2]
+        else:
+            controller.config['video_sources'] = [args.video1, controller.config.get('video_source')]
     if args.no_display:
         controller.config['fullscreen'] = False
-        # 这里可以修改不启动显示线程
-
+    
     # 运行系统
     controller.run()
 
 def main():
-    parser = argparse.ArgumentParser(description='多模块检测系统')
+    parser = argparse.ArgumentParser(description='多模块检测系统 - 支持RTSP流')
     parser.add_argument('--config', type=str, default='configs/system_config.yaml',
                        help='配置文件路径')
-    parser.add_argument('--video', type=str, 
+    parser.add_argument('--video1', type=str, 
                        default="data/test_videos/safe_gesture/gf1_new.mp4",
-                       help='视频文件路径或摄像头ID')
-    parser.add_argument('--video1', type=str, default="data/test_videos/safe_gesture/gf1_new.mp4",
-                       help='第一个视频文件路径或摄像头ID（可为RTSP URL）')
-    parser.add_argument('--video2', type=str, default="data/test_videos/trash_in_area/1.mp4",
-                       help='第二个视频文件路径或摄像头ID（可为RTSP URL）')
+                       help='第一个视频文件路径或摄像头ID')
+    parser.add_argument('--video2', type=str, 
+                       default="data/test_videos/trash_in_area/1.mp4",
+                       help='第二个视频文件路径或摄像头ID')
+    parser.add_argument('--rtsp1', type=str,
+                       help='第一个RTSP流URL（海康摄像头等）')
+    parser.add_argument('--rtsp2', type=str,
+                       help='第二个RTSP流URL（海康摄像头等）')
     parser.add_argument('--no-display', action='store_true',
                        help='无头模式运行（不显示窗口）')
+    parser.add_argument('--test-rtsp', type=str,
+                       help='测试RTSP连接（不运行完整系统）')
     
     args = parser.parse_args()
+    
+    # 测试RTSP连接模式
+    if args.test_rtsp:
+        print(f"🔧 测试RTSP连接: {args.test_rtsp}")
+        from tests.rtsp_test import test_rtsp_connection
+        test_rtsp_connection(args.test_rtsp)
+        return
 
     # 注册信号处理器
-    signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
-    signal.signal(signal.SIGTERM, signal_handler)  # kill命令
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     try:
-        # 直接调用函数，不再使用装饰器
         run_system_controller(args)
     except KeyboardInterrupt:
         print("\n⏹️ 用户中断")

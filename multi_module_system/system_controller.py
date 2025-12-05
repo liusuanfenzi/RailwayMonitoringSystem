@@ -91,8 +91,17 @@ class MultiModuleSystemController:
             # 视频源配置
             'video_source': "data/test_videos/safe_gesture/gf1_new.mp4",
             'video_sources': ["data/test_videos/safe_gesture/gf1_new.mp4", "data/test_videos/trash_in_area/1.mp4"],
+            'rtsp_sources': [],  # 新增：RTSP源列表
+            
             'frame_width': 640,
             'frame_height': 480,
+            
+            # RTSP特定配置
+            'rtsp_timeout': 5000,
+            'rtsp_buffer_size': 1,
+            'rtsp_max_reconnect_attempts': 10,
+            'rtsp_reconnect_delay': 3.0,
+
             'target_fps': 30,
             'loop_video': False,
             
@@ -290,8 +299,18 @@ class MultiModuleSystemController:
         try:
             self.threads = []
             
-            # 获取视频源列表
-            video_sources = self.config.get('video_sources')
+            # 获取视频源列表,优先使用RTSP源
+            video_sources = []
+            # 检查是否有RTSP配置
+            rtsp_sources = self.config.get('rtsp_sources', [])
+            if rtsp_sources and len(rtsp_sources) >= len(self.enabled_modules):
+                print(f"📡 使用RTSP视频源: {rtsp_sources}")
+                video_sources = rtsp_sources
+            else:
+                # 使用文件视频源
+                video_sources = self.config.get('video_sources')
+                print(f"📁 使用文件视频源: {video_sources}")
+            
             if not isinstance(video_sources, (list, tuple)):
                 print(f"❌ 视频源配置错误，期望列表，实际: {type(video_sources)}")
                 return False
@@ -326,10 +345,29 @@ class MultiModuleSystemController:
                 fb = ThreadSafeFrameBuffer(max_size=self.config.get('buffer_size', 10), name=buffer_name)
                 print(f"   ✅ 创建帧缓冲区: {buffer_name}")
                 
-                # 2. 创建视频捕获线程
-                cap_thread = VideoCaptureThread(src, fb, self.result_manager, self.stop_event, self.config)
-                self.threads.append(cap_thread)
-                print(f"   ✅ 创建视频捕获线程: {src}")
+                # 2. 根据视频源类型创建对应的捕获线程
+                cap_thread = None
+                
+                # 检查是否为RTSP流
+                if isinstance(src, str) and src.startswith(('rtsp://', 'rtmp://', 'http://', 'https://')):
+                    print(f"   📡 检测到RTSP/网络流，使用RTSPCaptureThread")
+                    from multi_module_system.rtsp_capture import RTSPCaptureThread
+                    cap_thread = RTSPCaptureThread(
+                        src, fb, self.result_manager, self.stop_event, self.config
+                    )
+                else:
+                    print(f"   📁 检测到文件/摄像头，使用VideoCaptureThread")
+                    from multi_module_system.video_capture import VideoCaptureThread
+                    cap_thread = VideoCaptureThread(
+                        src, fb, self.result_manager, self.stop_event, self.config
+                    )
+                
+                if cap_thread:
+                    self.threads.append(cap_thread)
+                    print(f"   ✅ 创建视频捕获线程: {src}")
+                else:
+                    print(f"❌ 无法创建视频捕获线程: {src}")
+                    return False
                 
                 # 3. 创建检测线程
                 if module_key in self.module_mapping:

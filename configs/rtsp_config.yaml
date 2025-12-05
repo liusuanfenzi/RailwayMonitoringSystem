@@ -1,0 +1,51 @@
+# configs/rtsp_config.yaml
+# RTSP海康摄像头配置
+
+# RTSP视频源配置
+rtsp_sources: 
+  - "rtsp://admin:password@192.168.1.64:554/Streaming/Channels/101"  # 主码流
+  # - "rtsp://admin:password@192.168.1.64:554/Streaming/Channels/102"  # 子码流（低延迟）
+
+# 文件视频源备用（当RTSP不可用时）
+video_sources: 
+  - "data/test_videos/safe_gesture/gf1_new.mp4"
+  - "data/test_videos/trash_in_area/1.mp4"
+
+# RTSP特定配置
+rtsp_timeout: 10000  # 连接超时10秒
+rtsp_buffer_size: 1  # 缓冲区大小，降低延迟
+rtsp_max_reconnect_attempts: 20  # 最大重连次数
+rtsp_reconnect_delay: 2.0  # 重连延迟秒数
+rtsp_frame_width: 1920  # 期望的摄像头分辨率
+rtsp_frame_height: 1080
+
+# 系统处理分辨率（可小于摄像头分辨率以提高性能）
+frame_width: 1280
+frame_height: 720
+
+# 显示窗口配置
+display_window_width: 800
+display_window_height: 600
+
+# 帧率配置
+target_fps: 15  # 系统目标FPS
+person_vehicle_target_fps: 10  # 人车检测目标FPS
+foreign_object_target_fps: 8   # 异物检测目标FPS
+
+# 缓冲区配置
+buffer_size: 10  # RTSP可能需要更大的缓冲区
+
+# 人车检测配置
+person_vehicle_engine_path: "yolov8n.engine"
+person_vehicle_confidence: 0.6
+person_vehicle_max_age: 30
+person_vehicle_detection_roi: [[350, 340], [750, 580]]
+
+# 异物检测配置
+foreign_object_roi: [[550, 400, 400, 300]]
+foreign_object_min_static_duration: 2.0
+foreign_object_threshold: 200
+foreign_object_min_area: 100
+
+# 启用模块配置
+enabled_modules: ['person_vehicle', 'foreign_object']
