@@ -124,15 +124,18 @@ class MultiModuleSystemController:
             'person_vehicle_iou_threshold': 0.3,
             
             # 显示配置
+            'display_window_width': 800,    # 添加默认值
+            'display_window_height': 600,   # 添加默认值
             'fullscreen': False,
             'buffer_size': 10,
             
             # ROI配置
-            'person_vehicle_detection_roi': [[350, 340], [750, 580]],
+            'person_vehicle_detection_roi': [[350, 320], [770, 600]],
             'train_station_roi': [[100, 100], [600, 400]],
+            'foreign_object_roi': [[550, 400, 400, 300]],
             
             # 异物检测配置（扁平化）
-            'foreign_object_roi': [[550, 400, 400, 300]],
+            #'foreign_object_roi': [[550, 400, 400, 300]],
             'foreign_object_min_static_duration': 2.0,
             'foreign_object_threshold': 200,
             'foreign_object_min_area': 100,
@@ -352,11 +355,27 @@ class MultiModuleSystemController:
                         window_pos = (100 + idx * 50, 100 + idx * 50)
                     
                     window_name = f"{module_info['display_name']} - Source {idx+1}"
+                    
+                    # 根据模块类型获取对应的ROI配置
+                    roi_config = None
+                    if module_key == 'person_vehicle':
+                        roi_config = self.config.get('person_vehicle_detection_roi')
+                    elif module_key == 'foreign_object':
+                        roi_config = self.config.get('foreign_object_roi')
+                    elif module_key == 'train_station':
+                        roi_config = self.config.get('train_station_roi')
+                    
+                    # 从配置中获取显示窗口大小
+                    display_width = self.config.get('display_window_width', 800)
+                    display_height = self.config.get('display_window_height', 600)
+                    display_size = (display_width, display_height)
+                    
                     self.display_manager.add_window(
                         window_name=window_name,
                         module_key=thread_name,  # 使用检测线程的标准化名称
                         position=window_pos,
-                        size=(800, 600)
+                        size=display_size,
+                        roi_config=roi_config  # 传递ROI配置
                     )
                 else:
                     print(f"❌ 未知模块: {module_key}")

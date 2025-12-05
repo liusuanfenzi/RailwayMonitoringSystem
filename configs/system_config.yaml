@@ -9,6 +9,15 @@ video_sources:
   - "data/test_videos/safe_gesture/gf1_new.mp4"
   - "data/test_videos/trash_in_area/1.mp4"
 
+# 视频分辨率配置
+frame_width: 640    # 视频帧宽度
+frame_height: 480   # 视频帧高度
+
+# 显示窗口配置
+display_window_width: 800    # 显示窗口宽度
+display_window_height: 600   # 显示窗口高度
+fullscreen: false            # 是否全屏显示
+
 # 帧率配置
 target_fps: 15  # 系统目标FPS
 person_vehicle_target_fps: 15  # 人车检测目标FPS
@@ -21,9 +30,10 @@ buffer_size: 5  # 减少缓冲区大小
 person_vehicle_engine_path: "yolov8n.engine"
 person_vehicle_confidence: 0.6
 person_vehicle_max_age: 30  # 减少跟踪器最大寿命
+person_vehicle_detection_roi: [[350, 340], [750, 580]]  # ROI配置
 
 # 异物检测配置
-foreign_object_roi: [[550, 400, 400, 300]]
+foreign_object_roi: [[550, 400, 400, 300]]  # ROI配置
 foreign_object_min_static_duration: 2.0
 foreign_object_threshold: 200
 foreign_object_min_area: 100
